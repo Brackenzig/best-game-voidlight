@@ -50,10 +50,26 @@ export class Player {
     if (input.down('d', 'arrowright')) ax += 1;
     if (input.down('w', 'arrowup')) ay -= 1;
     if (input.down('s', 'arrowdown')) ay += 1;
-    const len = Math.hypot(ax, ay);
+    let len = Math.hypot(ax, ay);
     if (len > 0) {
       ax /= len;
       ay /= len;
+    }
+    // Touch: drag steers toward the finger; a tap in place holds still.
+    // (No touch on desktop, so this never changes keyboard play.)
+    if (input.touchActive) {
+      const dx = input.touchX - this.x;
+      const dy = input.touchY - this.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 24) {
+        ax = dx / d;
+        ay = dy / d;
+        len = 1;
+      } else {
+        ax = 0;
+        ay = 0;
+        len = 0;
+      }
     }
     this.thrust = len > 0 ? 1 : 0;
 
@@ -93,10 +109,25 @@ export class Player {
     this.x = clamp(this.x + this.vx * dt, PLAYER.radius, VIEW.width - PLAYER.radius);
     this.y = clamp(this.y + this.vy * dt, PLAYER.radius, VIEW.height - PLAYER.radius);
 
-    // Aim: the mouse when it has moved, else the nearest enemy for Space fire.
+    // Aim: touch auto-aims the nearest enemy (like Space fire); the mouse
+    // aims where it points; Space aims at the nearest enemy. Desktop
+    // priority is exactly as before — touchActive is only true on touch,
+    // so the mouse-first, Space-second order never changes there.
     const firingMouse = input.mouseDown;
     const firingKeys = input.down(' ');
-    if (firingMouse) {
+    const firingTouch = !!input.touchActive;
+    if (firingTouch && enemies.length > 0) {
+      let best = null;
+      let bestD = Infinity;
+      for (const e of enemies) {
+        const d = (e.x - this.x) ** 2 + (e.y - this.y) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = e;
+        }
+      }
+      if (best) this.angle = angleTo(this.x, this.y, best.x, best.y);
+    } else if (firingMouse) {
       this.angle = angleTo(this.x, this.y, input.mouseX, input.mouseY);
     } else if (firingKeys && enemies.length > 0) {
       let best = null;
@@ -114,7 +145,7 @@ export class Player {
     // Fire toward the aim while the trigger is held.
     this.fireTimer -= dt;
     const interval = this.rapid > 0 ? PLAYER.rapidInterval : PLAYER.fireInterval;
-    if ((firingMouse || firingKeys) && this.fireTimer <= 0) {
+    if ((firingMouse || firingKeys || firingTouch) && this.fireTimer <= 0) {
       this.fireTimer = interval;
       fire(this);
     }

@@ -114,6 +114,7 @@ export function stageShot(name, world, player, onStep) {
   world.startGame();
   const limit = name === 'end' ? END_LIMIT_SECONDS : name === 'brute' ? BRUTE_LIMIT_SECONDS : PLAY_SECONDS;
   const brave = name !== 'end';
+  let wave3At = -1; // when wave 3 first started (play scene orb fallback)
   for (let i = 0; i < limit / STEP; i += 1) {
     autopilot(world, player, input, brave);
     const result = world.step(STEP, player, input);
@@ -121,23 +122,34 @@ export function stageShot(name, world, player, onStep) {
     input.endFrame();
     if (result !== 0) break;
     if (name === 'brute') {
-      // Stop on the first live brute of wave 3, telegraph or landed.
-      const bruteHere = world.enemies.some((e) => e.kind === 'brute')
-        || world.telegraphs.some((t) => t.kind === 'brute');
+      // Stop on the first LANDED brute of wave 3, so the frame shows the
+      // brute itself (a portal alone reads as a glow at small size).
+      const bruteHere = world.enemies.some((e) => e.kind === 'brute');
       if (world.wave >= 3 && bruteHere) break;
     }
     // The play scene stops mid-wave, while the field is still busy, instead
     // of at a quiet moment between waves: at least four shades close to the
-    // ship, so the frame reads as a fight, not an empty field. (A money
-    // frame — combo x4+, three kinds, a power-up — would be nicer, but the
-    // autopilot sweeps too clean for it to line up reliably; the busy
-    // wave-3+ fight is the frame that matters.)
+    // ship, so the frame reads as a fight, not an empty field — and a
+    // power-up orb on the field, so the judge sees the pickups, not just
+    // the fight. Pickups live 10 s, so if none shows within 25 s of wave 3
+    // the busy frame is taken anyway rather than staging forever. (A count
+    // leg was tried and reverted: stopping on five spread-out enemies
+    // trades the close fight away for a sparse frame.)
     if (name === 'play' && world.wave >= 3 && world.time > 10) {
+      if (wave3At < 0) wave3At = world.time;
       let near = 0;
       for (const e of world.enemies) {
         if (dist2(e.x, e.y, player.x, player.y) < 380 * 380) near += 1;
       }
-      if (near >= 4) break;
+      // The orb must be VISIBLE, not just present: a pickup under an enemy
+      // sprite reads as nothing, so it needs ~30 px of clear space around it.
+      const orb = world.pickups.some((p) => {
+        for (const e of world.enemies) {
+          if (dist2(p.x, p.y, e.x, e.y) < 30 * 30) return false;
+        }
+        return true;
+      });
+      if (near >= 4 && (orb || world.time - wave3At > 25)) break;
     }
   }
   const over = world.screen === SCREEN_OVER;

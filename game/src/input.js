@@ -9,6 +9,46 @@ export class Input {
     this.pressed = new Set(); // keys pressed since the last consume
     this.canvas = canvas;
     this.onFirstGesture = null; // set by main.js: unlock audio on first input
+    // Touch: drag to move, auto-fire while touching. The canvas already has
+    // touch-action: none, so the drag never scrolls the page.
+    this.touchActive = false;
+    this.touchX = 0;
+    this.touchY = 0;
+    const toCanvas = (touch) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((touch.clientX - rect.left) / rect.width) * canvas.width,
+        y: ((touch.clientY - rect.top) / rect.height) * canvas.height,
+      };
+    };
+    canvas.addEventListener('touchstart', (event) => {
+      event.preventDefault();
+      const p = toCanvas(event.changedTouches[0]);
+      this.touchActive = true;
+      this.touchX = p.x;
+      this.touchY = p.y;
+      this.mouseX = p.x;
+      this.mouseY = p.y;
+      this.mouseDown = true; // also starts the game from the title screen
+      if (this.onFirstGesture) this.onFirstGesture();
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (event) => {
+      event.preventDefault();
+      const p = toCanvas(event.changedTouches[0]);
+      this.touchX = p.x;
+      this.touchY = p.y;
+      this.mouseX = p.x;
+      this.mouseY = p.y;
+    }, { passive: false });
+    const endTouch = (event) => {
+      event.preventDefault();
+      if (event.touches.length === 0) {
+        this.touchActive = false;
+        this.mouseDown = false;
+      }
+    };
+    canvas.addEventListener('touchend', endTouch, { passive: false });
+    canvas.addEventListener('touchcancel', endTouch, { passive: false });
 
     window.addEventListener('keydown', (event) => {
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(event.key)) {
